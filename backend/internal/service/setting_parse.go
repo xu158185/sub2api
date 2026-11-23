@@ -206,10 +206,11 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeySubscriptionEnabled: "true",
 
 		// Model plaza feature (default disabled; opt-in, public unless require_auth)
-		SettingKeyModelPlazaEnabled:       "false",
-		SettingKeyModelPlazaRequireAuth:   "false",
-		SettingKeyModelPlazaDescription:   "",
-		SettingKeyPluginManagementEnabled: "false",
+		SettingKeyModelPlazaEnabled:         "false",
+		SettingKeyModelPlazaRequireAuth:     "false",
+		SettingKeyModelPlazaDescription:     "",
+		SettingKeyModelPlazaDomesticPricing: "",
+		SettingKeyPluginManagementEnabled:   "false",
 
 		// Affiliate (邀请返利) feature (default disabled; opt-in)
 		SettingKeyAffiliateEnabled:              "false",

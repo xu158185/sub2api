@@ -556,6 +556,9 @@ const (
 	// SettingKeyModelPlazaDescription stores the Markdown blurb rendered at the top of
 	// the Model Plaza page (global pricing notes, exchange rate, promotions, ...).
 	SettingKeyModelPlazaDescription = "model_plaza_description"
+	// SettingKeyModelPlazaDomesticPricing stores editable domestic official prices
+	// as a JSON map keyed by model name. Values are CNY per million tokens.
+	SettingKeyModelPlazaDomesticPricing = "model_plaza_domestic_pricing"
 
 	// SettingKeyPluginManagementEnabled controls sidebar visibility only; it does
 	// not stop or otherwise change already loaded plugin runtimes.

@@ -77,6 +77,7 @@ func RegisterAdminRoutes(
 
 		// 系统设置
 		registerSettingsRoutes(admin, h, stepUpAuth)
+		registerModelPlazaAdminRoutes(admin, h)
 
 		// 数据管理
 		registerDataManagementRoutes(admin, h, stepUpAuth)
@@ -133,6 +134,13 @@ func RegisterAdminRoutes(
 		// 操作审计日志
 		registerAuditLogRoutes(admin, h, stepUpAuth)
 	}
+}
+
+func registerModelPlazaAdminRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	plaza := admin.Group("/model-plaza")
+	plaza.GET("", h.ModelPlaza.GetAdmin)
+	plaza.GET("/official-pricing", h.ModelPlaza.GetDomesticPricing)
+	plaza.PUT("/official-pricing", h.ModelPlaza.UpdateDomesticPricing)
 }
 
 func registerPromptAuditRoutes(admin *gin.RouterGroup, h *handler.Handlers) {

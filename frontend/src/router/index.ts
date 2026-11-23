@@ -486,6 +486,17 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/admin/model-plaza',
+    name: 'AdminModelPlaza',
+    component: () => import('@/views/admin/ModelPlazaView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'Model Plaza Pricing',
+      titleKey: 'modelPlaza.title'
+    }
+  },
+  {
     path: '/admin/channels',
     redirect: '/admin/channels/pricing'
   },

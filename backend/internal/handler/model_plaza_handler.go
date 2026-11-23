@@ -2,6 +2,7 @@ package handler
 
 import (
 	"log/slog"
+	"net/http"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
@@ -38,6 +39,7 @@ func NewModelPlazaHandler(
 
 // modelPlazaOfficialPricing 官方参考价（USD per token，与计费目录同源）。
 type modelPlazaOfficialPricing struct {
+	Currency           string   `json:"currency,omitempty"`
 	InputPrice         *float64 `json:"input_price"`
 	OutputPrice        *float64 `json:"output_price"`
 	CacheWritePrice    *float64 `json:"cache_write_price"`
@@ -130,6 +132,11 @@ func (h *ModelPlazaHandler) Get(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
+	if domestic, pricingErr := h.settingService.GetModelPlazaDomesticPricing(c.Request.Context()); pricingErr == nil {
+		applyDomesticOfficialPricing(groups, domestic)
+	} else {
+		slog.Warn("model_plaza_domestic_pricing_failed", "error", pricingErr)
+	}
 
 	// allowedGroups == nil 表示匿名；登录用户恒为非 nil（可能为空集合）。
 	var allowedGroups map[int64]struct{}
@@ -160,6 +167,154 @@ func (h *ModelPlazaHandler) Get(c *gin.Context) {
 		Description: rt.Description,
 		Groups:      out,
 	})
+}
+
+// GetAdmin returns the complete plaza with effective billing prices. It is
+// protected by the admin route group and does not depend on the public switch.
+func (h *ModelPlazaHandler) GetAdmin(c *gin.Context) {
+	groups, err := h.plazaService.ListGroups(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	domestic, err := h.settingService.GetModelPlazaDomesticPricing(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	applyDomesticOfficialPricing(groups, domestic)
+	response.Success(c, modelPlazaResponse{
+		Description: h.settingService.GetModelPlazaRuntime(c.Request.Context()).Description,
+		Groups:      toLocalizedModelPlazaGroups(groups, nil, c.GetHeader("Accept-Language")),
+	})
+}
+
+// GetDomesticPricing returns the admin-editable domestic official price table.
+func (h *ModelPlazaHandler) GetDomesticPricing(c *gin.Context) {
+	pricing, err := h.settingService.GetModelPlazaDomesticPricing(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, gin.H{"pricing": pricing})
+}
+
+// UpdateDomesticPricing replaces the admin-editable domestic official price table.
+func (h *ModelPlazaHandler) UpdateDomesticPricing(c *gin.Context) {
+	var req struct {
+		Pricing map[string]service.ModelPlazaDomesticPricing `json:"pricing"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, http.StatusBadRequest, "invalid pricing payload")
+		return
+	}
+	if err := h.settingService.SetModelPlazaDomesticPricing(c.Request.Context(), req.Pricing); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, gin.H{"pricing": req.Pricing})
+}
+
+func applyDomesticOfficialPricing(groups []service.PlazaGroup, pricing map[string]service.ModelPlazaDomesticPricing) {
+	for gi := range groups {
+		for mi := range groups[gi].Models {
+			value, ok := pricing[groups[gi].Models[mi].Name]
+			if !ok {
+				continue
+			}
+			groups[gi].Models[mi].OfficialPricing = mergeDomesticOfficialPricing(
+				groups[gi].Models[mi].OfficialPricing,
+				value,
+			)
+		}
+	}
+}
+
+// mergeDomesticOfficialPricing overlays only the fields entered by an
+// administrator and keeps the default catalog values for every other field.
+// The public plaza uses CNY when a domestic override exists so the resulting
+// display matches the editable domestic price table.
+func mergeDomesticOfficialPricing(
+	base *service.PlazaOfficialPricing,
+	value service.ModelPlazaDomesticPricing,
+) *service.PlazaOfficialPricing {
+	hasOverride := value.InputPrice != nil || value.OutputPrice != nil ||
+		value.CacheWritePrice != nil || value.CacheWrite1hPrice != nil ||
+		value.CacheWrite12hPrice != nil || value.CacheReadPrice != nil
+	if !hasOverride {
+		return base
+	}
+
+	merged := service.PlazaOfficialPricing{Currency: "CNY"}
+	if base != nil {
+		merged = *base
+		merged.Currency = "CNY"
+		merged.Intervals = append([]service.PricingInterval(nil), base.Intervals...)
+	}
+
+	// Domestic prices are entered as CNY per million tokens. The catalog's
+	// first context tier is the reference tier, so each override keeps the
+	// existing Sub2 tier ratio for the remaining context tiers.
+	type priceOverride struct {
+		value       *float64
+		topLevel    **float64
+		intervalVal func(*service.PricingInterval) **float64
+	}
+	overrides := []priceOverride{
+		{value.InputPrice, &merged.InputPrice, func(iv *service.PricingInterval) **float64 { return &iv.InputPrice }},
+		{value.OutputPrice, &merged.OutputPrice, func(iv *service.PricingInterval) **float64 { return &iv.OutputPrice }},
+		{value.CacheWritePrice, &merged.CacheWritePrice, func(iv *service.PricingInterval) **float64 { return &iv.CacheWritePrice }},
+		{value.CacheWrite1hPrice, &merged.CacheWrite1hPrice, func(iv *service.PricingInterval) **float64 { return &iv.CacheWrite1hPrice }},
+		{value.CacheWrite12hPrice, &merged.CacheWrite12hPrice, func(iv *service.PricingInterval) **float64 { return &iv.CacheWrite12hPrice }},
+		{value.CacheReadPrice, &merged.CacheReadPrice, func(iv *service.PricingInterval) **float64 { return &iv.CacheReadPrice }},
+	}
+	for _, override := range overrides {
+		if override.value == nil {
+			continue
+		}
+		domestic := *override.value / 1_000_000
+		baseline := *override.topLevel
+		if baseline == nil && len(merged.Intervals) > 0 {
+			baseline = *override.intervalVal(&merged.Intervals[0])
+		}
+		*override.topLevel = &domestic
+		if len(merged.Intervals) == 0 {
+			continue
+		}
+		if baseline == nil || *baseline == 0 {
+			// A missing catalog field has no ratio to preserve. Keep the
+			// entered value available in the first tier as a useful fallback.
+			first := override.intervalVal(&merged.Intervals[0])
+			*first = &domestic
+			continue
+		}
+		ratio := domestic / *baseline
+		for i := range merged.Intervals {
+			field := override.intervalVal(&merged.Intervals[i])
+			if *field == nil {
+				continue
+			}
+			scaled := **field * ratio
+			*field = &scaled
+		}
+	}
+	return &merged
+}
+
+func domesticPricingToOfficial(value service.ModelPlazaDomesticPricing) *service.PlazaOfficialPricing {
+	perToken := func(v *float64) *float64 {
+		if v == nil {
+			return nil
+		}
+		x := *v / 1_000_000
+		return &x
+	}
+	return &service.PlazaOfficialPricing{
+		Currency:   "CNY",
+		InputPrice: perToken(value.InputPrice), OutputPrice: perToken(value.OutputPrice),
+		CacheWritePrice: perToken(value.CacheWritePrice), CacheWrite1hPrice: perToken(value.CacheWrite1hPrice),
+		CacheWrite12hPrice: perToken(value.CacheWrite12hPrice), CacheReadPrice: perToken(value.CacheReadPrice),
+	}
 }
 
 // filterPlazaVisibleGroups 按登录态裁剪分组可见性。
@@ -258,6 +413,7 @@ func toModelPlazaOfficialPricing(p *service.PlazaOfficialPricing) *modelPlazaOff
 		return nil
 	}
 	return &modelPlazaOfficialPricing{
+		Currency:           p.Currency,
 		InputPrice:         p.InputPrice,
 		OutputPrice:        p.OutputPrice,
 		CacheWritePrice:    p.CacheWritePrice,

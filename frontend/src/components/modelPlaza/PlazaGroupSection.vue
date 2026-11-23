@@ -65,6 +65,7 @@
         :video-rate-multiplier="group.video_rate_multiplier"
         :peak-window="peakWindow"
         :peak-rate-multiplier="group.peak_rate_multiplier"
+        :domestic-formula="domesticFormula"
       />
       <p v-else class="px-5 py-4 text-center text-sm text-gray-400 dark:text-dark-500">
         {{ t('modelPlaza.detail.noModels') }}
@@ -87,7 +88,10 @@ import { useAppStore } from '@/stores/app'
 
 const props = defineProps<{
   group: ModelPlazaGroup
+  domesticFormula?: boolean
 }>()
+
+const domesticFormula = computed(() => props.domesticFormula === true)
 
 const { t } = useI18n()
 const appStore = useAppStore()

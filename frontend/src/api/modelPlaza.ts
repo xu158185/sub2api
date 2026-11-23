@@ -9,6 +9,7 @@ import type { UserPricingInterval, UserSupportedModelPricing } from './channels'
 
 /** 官方参考价（USD per token，与计费目录同源；字段缺失 = 目录未覆盖）。 */
 export interface PlazaOfficialPricing {
+  currency?: 'USD' | 'CNY' | string
   input_price: number | null
   output_price: number | null
   /** 5m 缓存写入（= LiteLLM cache_creation）。 */
@@ -88,6 +89,17 @@ export interface ModelPlazaResponse {
   groups: ModelPlazaGroup[]
 }
 
+export interface ModelPlazaDomesticPricing {
+  input_price?: number | null
+  output_price?: number | null
+  cache_write_price?: number | null
+  cache_write_1h_price?: number | null
+  cache_write_12h_price?: number | null
+  cache_read_price?: number | null
+  source?: string
+  effective_date?: string
+}
+
 /** 获取模型广场数据。开关未启用时后端返回 404。 */
 export async function getModelPlaza(options?: { signal?: AbortSignal }): Promise<ModelPlazaResponse> {
   const { data } = await apiClient.get<ModelPlazaResponse>('/model-plaza', {
@@ -96,6 +108,33 @@ export async function getModelPlaza(options?: { signal?: AbortSignal }): Promise
   return data
 }
 
-export const modelPlazaAPI = { getModelPlaza }
+export async function getAdminModelPlaza(): Promise<ModelPlazaResponse> {
+  const { data } = await apiClient.get<ModelPlazaResponse>('/admin/model-plaza')
+  return data
+}
+
+export async function getModelPlazaDomesticPricing(): Promise<Record<string, ModelPlazaDomesticPricing>> {
+  const { data } = await apiClient.get<{ pricing: Record<string, ModelPlazaDomesticPricing> }>(
+    '/admin/model-plaza/official-pricing'
+  )
+  return data.pricing ?? {}
+}
+
+export async function updateModelPlazaDomesticPricing(
+  pricing: Record<string, ModelPlazaDomesticPricing>
+): Promise<Record<string, ModelPlazaDomesticPricing>> {
+  const { data } = await apiClient.put<{ pricing: Record<string, ModelPlazaDomesticPricing> }>(
+    '/admin/model-plaza/official-pricing',
+    { pricing }
+  )
+  return data.pricing ?? pricing
+}
+
+export const modelPlazaAPI = {
+  getModelPlaza,
+  getAdminModelPlaza,
+  getModelPlazaDomesticPricing,
+  updateModelPlazaDomesticPricing
+}
 
 export default modelPlazaAPI
