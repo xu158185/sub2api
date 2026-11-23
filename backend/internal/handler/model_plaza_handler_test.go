@@ -272,6 +272,10 @@ func (plazaVarySettingRepo) GetMultiple(context.Context, []string) (map[string]s
 	return map[string]string{service.SettingKeyModelPlazaEnabled: "true"}, nil
 }
 
+func (plazaVarySettingRepo) GetValue(context.Context, string) (string, error) {
+	return "", service.ErrSettingNotFound
+}
+
 type plazaVaryChannelRepo struct{ service.ChannelRepository }
 
 func (plazaVaryChannelRepo) ListAll(context.Context) ([]service.Channel, error) { return nil, nil }

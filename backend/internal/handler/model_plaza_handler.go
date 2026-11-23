@@ -301,22 +301,6 @@ func mergeDomesticOfficialPricing(
 	return &merged
 }
 
-func domesticPricingToOfficial(value service.ModelPlazaDomesticPricing) *service.PlazaOfficialPricing {
-	perToken := func(v *float64) *float64 {
-		if v == nil {
-			return nil
-		}
-		x := *v / 1_000_000
-		return &x
-	}
-	return &service.PlazaOfficialPricing{
-		Currency:   "CNY",
-		InputPrice: perToken(value.InputPrice), OutputPrice: perToken(value.OutputPrice),
-		CacheWritePrice: perToken(value.CacheWritePrice), CacheWrite1hPrice: perToken(value.CacheWrite1hPrice),
-		CacheWrite12hPrice: perToken(value.CacheWrite12hPrice), CacheReadPrice: perToken(value.CacheReadPrice),
-	}
-}
-
 // filterPlazaVisibleGroups 按登录态裁剪分组可见性。
 // allowedGroups == nil 表示匿名（仅非专属）；非 nil 包含普通授权及有效订阅分组。
 // restrictPublicGroups 为 true 时，公开分组也必须落在 allowedGroups 内，否则用户会
